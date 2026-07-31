@@ -72,6 +72,9 @@ async function initDatabase() {
 // ── 5 e 6 ──
 var api = require('./modules/api/server.js');
 var scheduler = require('./modules/orchestrator/scheduler.js');
+var telegram = require('./modules/telegram/index.js');
+var store = require('./modules/persistence/stateStore.js');
+var repo = require('./modules/database/repository.js');
 
 log.info('service.starting', 'avvio piattaforma XAU/USD', {
   instruments: Object.keys(cfg.instruments).filter(function (s) { return cfg.instruments[s].enabled; }),
@@ -82,6 +85,12 @@ log.info('service.starting', 'avvio piattaforma XAU/USD', {
 api.start();
 initDatabase().finally(function () {
   scheduler.start();
+
+  var telegramInstance = telegram.attach(bus, config, logging, {
+    store: store, scheduler: scheduler, database: database, repo: repo, positionTracker: positionTracker
+  });
+  if (telegramInstance) telegramInstance.startPolling();
+
   bus.publish(bus.EVENTS.SERVICE_STARTED, { at: Date.now() });
 });
 
