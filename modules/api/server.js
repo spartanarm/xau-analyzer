@@ -12,6 +12,7 @@ var logging = require('../../core/logging/index.js');
 var bus = require('../../core/events/index.js');
 var store = require('../persistence/stateStore.js');
 var scheduler = require('../orchestrator/scheduler.js');
+var database = require('../database/index.js');
 
 var log = logging.forComponent('api');
 var server = null;
@@ -22,10 +23,11 @@ function json(res, code, body) {
   res.end(JSON.stringify(body));
 }
 
-function health() {
+async function health() {
   var st = scheduler.getStats();
   var snap = store.load('latest_snapshot', null);
   var ageMs = snap ? (Date.now() - snap.generatedAt) : null;
+  var dbHealth = config.get().database.enabled ? await database.health() : { connected: false, reason: 'non configurato' };
 
   // Lo stato riflette DUE cose, non una: la freschezza dei dati E il
   // funzionamento dei cicli. Un errore recente rende lo stato "degraded"
@@ -42,6 +44,7 @@ function health() {
 
   return {
     status: status,
+    database: dbHealth,
     reason: status === 'degraded' ? ('ultimo ciclo fallito: ' + st.lastError.message)
       : status === 'stale' ? 'ultima analisi troppo vecchia'
       : status === 'starting' ? 'in attesa del primo ciclo' : null,
@@ -99,12 +102,16 @@ function renderPage(snap, h) {
     '</body></html>';
 }
 
-function handler(req, res) {
+async function handler(req, res) {
   var path = (req.url || '/').split('?')[0];
   try {
-    if (routes[path]) return json(res, 200, routes[path]());
+    if (routes[path]) {
+      var body = await routes[path]();
+      return json(res, 200, body);
+    }
     if (path === '/' || path === '/index.html') {
-      var html = renderPage(store.load('latest_snapshot', null), health());
+      var h = await health();
+      var html = renderPage(store.load('latest_snapshot', null), h);
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end(html);
     }
