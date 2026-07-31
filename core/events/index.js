@@ -37,6 +37,7 @@ var EVENTS = {
   SETUP_INVALIDATED: 'setup.invalidated',
   SETUP_EXPIRED: 'setup.expired',
   SETUP_MISSED: 'setup.missed',
+  SETUP_TARGET_HIT: 'setup.targetHit', // segnale GREZZO del motore (TARGET_HIT) — di competenza di Position Tracker, non un evento posizione finale
 
   // esiti (generati dal Position Tracker, Fase 3)
   POSITION_OPENED: 'position.opened',
