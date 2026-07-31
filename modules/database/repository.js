@@ -145,10 +145,46 @@ async function closePositionRecord(position) {
   );
 }
 
+async function getRecentClosedPositions(symbol, limit) {
+  var res = await db.query(
+    'SELECT setup_id, direction, entry_price, exit_price, exit_reason, pnl_r, opened_at, closed_at ' +
+    'FROM positions WHERE symbol=$1 AND status=\'CLOSED\' ORDER BY closed_at DESC LIMIT $2',
+    [symbol, limit]
+  );
+  return res.rows;
+}
+
+// Stesse identiche formule già usate e verificate in backtest/metrics.js
+// (winRate, profitFactor, expectancyR) — così le statistiche live e
+// quelle storiche sono calcolate allo stesso modo, mai in due modi diversi.
+async function getPositionStats(symbol) {
+  var res = await db.query(
+    'SELECT pnl_r FROM positions WHERE symbol=$1 AND status=\'CLOSED\' AND pnl_r IS NOT NULL',
+    [symbol]
+  );
+  var rValues = res.rows.map(function (r) { return parseFloat(r.pnl_r); });
+  var n = rValues.length;
+  if (n === 0) return { trades: 0, wins: 0, losses: 0, winRate: null, profitFactor: null, expectancyR: null };
+
+  var wins = rValues.filter(function (r) { return r > 0; });
+  var losses = rValues.filter(function (r) { return r <= 0; });
+  var grossWinR = wins.reduce(function (s, r) { return s + r; }, 0);
+  var grossLossR = Math.abs(losses.reduce(function (s, r) { return s + r; }, 0));
+  var profitFactor = grossLossR > 0 ? grossWinR / grossLossR : (grossWinR > 0 ? Infinity : null);
+  var expectancyR = rValues.reduce(function (s, r) { return s + r; }, 0) / n;
+
+  return {
+    trades: n, wins: wins.length, losses: losses.length,
+    winRate: (wins.length / n) * 100, profitFactor: profitFactor, expectancyR: expectancyR
+  };
+}
+
 module.exports = {
   recordSetupLifecycleEvent: recordSetupLifecycleEvent,
   insertAnalysis: insertAnalysis,
   insertLog: insertLog,
   insertPosition: insertPosition,
-  closePositionRecord: closePositionRecord
+  closePositionRecord: closePositionRecord,
+  getRecentClosedPositions: getRecentClosedPositions,
+  getPositionStats: getPositionStats
 };
