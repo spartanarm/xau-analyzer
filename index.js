@@ -45,7 +45,12 @@ bus.setErrorReporter(function (info) {
   logging.forComponent('event-bus').error('consumer.failed', info.message, { handler: info.handler, eventType: info.eventType });
 });
 
-// ── 4. DATABASE (opzionale: se non configurato, resta inattivo) ──
+// ── 4. POSITION TRACKER (sempre attivo: la sua memoria vive su file,
+// non dipende dal database — segue i trade anche se il database è spento) ──
+var positionTracker = require('./modules/positionTracker/index.js');
+positionTracker.attach(bus, config, logging);
+
+// ── 5. DATABASE (opzionale: se non configurato, resta inattivo) ──
 var database = require('./modules/database/index.js');
 var databaseListener = require('./modules/database/listener.js');
 
