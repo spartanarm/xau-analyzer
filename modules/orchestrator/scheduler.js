@@ -30,7 +30,7 @@ var STATE_EVENTS = {
   RETEST: bus.EVENTS.SETUP_TOUCHED,
   INVALIDATED: bus.EVENTS.SETUP_INVALIDATED,
   EXPIRED: bus.EVENTS.SETUP_EXPIRED,
-  TARGET_HIT: bus.EVENTS.POSITION_TP1_HIT
+  TARGET_HIT: bus.EVENTS.SETUP_TARGET_HIT
 };
 var PLAN_STATUS_EVENTS = {
   TRADE_READY: bus.EVENTS.SETUP_TRADE_READY,
@@ -141,7 +141,7 @@ async function runCycle(symbol) {
 
   // 6. EVENTI: solo sulle transizioni reali
   publishLifecycleEvents({
-    symbol: symbol, S: S, tracker: tracker, plan: plan, radar: result.radar, core: result.core,
+    symbol: symbol, S: S, tracker: tracker, plan: plan, radar: result.radar, core: result.core, price: price,
     prevTrackerId: prevTrackerId, prevState: prevState, prevPlanSig: prevPlanSig
   });
 
@@ -205,7 +205,7 @@ function publishLifecycleEvents(ctx) {
     if (evType) {
       bus.publish(evType, Object.assign({
         symbol: ctx.symbol, setupId: tracker.id, direction: tracker.dir, from: ctx.prevState, to: tracker.state, status: tracker.state,
-        invalid: tracker.invalid, outcome: tracker.outcome || null
+        invalid: tracker.invalid, outcome: tracker.outcome || null, priceAtEvent: ctx.price
       }, setupCtx, { reason: tracker.note || setupCtx.reason }));
     }
   }
