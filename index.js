@@ -45,7 +45,26 @@ bus.setErrorReporter(function (info) {
   logging.forComponent('event-bus').error('consumer.failed', info.message, { handler: info.handler, eventType: info.eventType });
 });
 
-// ── 4 e 5 ──
+// ── 4. DATABASE (opzionale: se non configurato, resta inattivo) ──
+var database = require('./modules/database/index.js');
+var databaseListener = require('./modules/database/listener.js');
+
+async function initDatabase() {
+  if (!cfg.database.enabled) return;
+  try {
+    database.init(config, logging);
+    await database.runMigrations();
+    databaseListener.attach(bus, config, logging);
+    log.info('database.ready', 'database connesso e migrazioni applicate');
+  } catch (err) {
+    // GARANZIA: un database irraggiungibile non deve impedire l'avvio.
+    // Il servizio prosegue con lo stato operativo su file, come sempre
+    // faceva prima della Fase 2 — solo lo storico non verrà registrato.
+    log.error('database.failed', 'database non disponibile: il servizio prosegue senza storico persistito', { error: err.message });
+  }
+}
+
+// ── 5 e 6 ──
 var api = require('./modules/api/server.js');
 var scheduler = require('./modules/orchestrator/scheduler.js');
 
@@ -56,8 +75,10 @@ log.info('service.starting', 'avvio piattaforma XAU/USD', {
 });
 
 api.start();
-scheduler.start();
-bus.publish(bus.EVENTS.SERVICE_STARTED, { at: Date.now() });
+initDatabase().finally(function () {
+  scheduler.start();
+  bus.publish(bus.EVENTS.SERVICE_STARTED, { at: Date.now() });
+});
 
 // Un errore non gestito non deve far morire il servizio in silenzio:
 // lo registriamo e restiamo in piedi (il ciclo successivo riprova).
