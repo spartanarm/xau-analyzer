@@ -115,8 +115,40 @@ async function insertLog(record) {
   );
 }
 
+async function insertPosition(position) {
+  await db.query(
+    'INSERT INTO positions (symbol, setup_id, direction, entry_price, sl, tp1, tp2, tp_fast, order_type, execution_mode, opened_at, status) ' +
+    'VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+    [
+      position.symbol, position.setupId, position.direction, position.entryPrice, position.sl,
+      position.tp1, position.tp2, position.tpFast, position.orderType, position.executionMode,
+      new Date(position.openedAt), 'OPEN'
+    ]
+  );
+}
+
+async function closePositionRecord(position) {
+  await db.query(
+    'UPDATE positions SET closed_at=$1, exit_price=$2, exit_reason=$3, pnl_r=$4, status=\'CLOSED\' ' +
+    'WHERE symbol=$5 AND setup_id=$6 AND status=\'OPEN\'',
+    [new Date(position.closedAt), position.exitPrice, position.exitReason, position.pnlR, position.symbol, position.setupId]
+  );
+
+  // Aggiorna anche setups con i dati DEFINITIVI e precisi del trade —
+  // sovrascrive qualunque valore "evolutivo" lasciato dai cicli precedenti,
+  // perché qui l'informazione è autorevole (Position Tracker, non il
+  // generico aggiornamento per-ciclo).
+  await db.query(
+    'UPDATE setups SET terminal_at=$1, outcome=$2, exit_price=$3, pnl_r=$4, updated_at=now() ' +
+    'WHERE symbol=$5 AND id=$6',
+    [new Date(position.closedAt), position.exitReason, position.exitPrice, position.pnlR, position.symbol, position.setupId]
+  );
+}
+
 module.exports = {
   recordSetupLifecycleEvent: recordSetupLifecycleEvent,
   insertAnalysis: insertAnalysis,
-  insertLog: insertLog
+  insertLog: insertLog,
+  insertPosition: insertPosition,
+  closePositionRecord: closePositionRecord
 };

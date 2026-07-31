@@ -26,7 +26,7 @@ function attach(bus, config, logging) {
   var lifecycleEvents = [
     bus.EVENTS.SETUP_CREATED, bus.EVENTS.SETUP_CONFIRMED, bus.EVENTS.SETUP_TOUCHED,
     bus.EVENTS.SETUP_INVALIDATED, bus.EVENTS.SETUP_EXPIRED, bus.EVENTS.SETUP_MISSED,
-    bus.EVENTS.SETUP_TRADE_READY, bus.EVENTS.SETUP_PENDING_LIMIT, bus.EVENTS.POSITION_TP1_HIT
+    bus.EVENTS.SETUP_TRADE_READY, bus.EVENTS.SETUP_PENDING_LIMIT, bus.EVENTS.SETUP_TARGET_HIT
   ];
 
   lifecycleEvents.forEach(function (eventType) {
@@ -40,6 +40,18 @@ function attach(bus, config, logging) {
   bus.subscribe(bus.EVENTS.CYCLE_COMPLETED, 'database', function (ev) {
     return repo.insertAnalysis(ev).catch(function (err) {
       log.error('write.failed', 'scrittura analisi fallita', { error: err.message });
+    });
+  });
+
+  bus.subscribe(bus.EVENTS.POSITION_OPENED, 'database', function (ev) {
+    return repo.insertPosition(ev.payload).catch(function (err) {
+      log.error('write.failed', 'scrittura apertura posizione fallita', { error: err.message, setupId: ev.payload.setupId });
+    });
+  });
+
+  bus.subscribe(bus.EVENTS.POSITION_CLOSED, 'database', function (ev) {
+    return repo.closePositionRecord(ev.payload).catch(function (err) {
+      log.error('write.failed', 'scrittura chiusura posizione fallita', { error: err.message, setupId: ev.payload.setupId });
     });
   });
 
