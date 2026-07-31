@@ -141,7 +141,7 @@ async function runCycle(symbol) {
 
   // 6. EVENTI: solo sulle transizioni reali
   publishLifecycleEvents({
-    symbol: symbol, S: S, tracker: tracker, plan: plan, radar: result.radar,
+    symbol: symbol, S: S, tracker: tracker, plan: plan, radar: result.radar, core: result.core,
     prevTrackerId: prevTrackerId, prevState: prevState, prevPlanSig: prevPlanSig
   });
 
@@ -155,23 +155,58 @@ async function runCycle(symbol) {
   bus.publish(bus.EVENTS.CYCLE_COMPLETED, { symbol: symbol, snapshot: snapshot });
 }
 
+// Contesto condiviso da allegare a QUALSIASI evento di ciclo di vita:
+// così chi ascolta (il database, in futuro l'AI Performance Engine) ha
+// sempre tutto il necessario per un salvataggio completo, indipendentemente
+// da quale specifico evento sia scattato in questo ciclo.
+function buildSetupContext(core, plan) {
+  function tfInfo(tf) {
+    return tf && tf.ok ? { trend: tf.structure.trend, state: tf.structure.state, lastEvent: tf.structure.lastEvent || null } : null;
+  }
+  return {
+    marketStructure: { h4: tfInfo(core.tf.h4), h1: tfInfo(core.tf.h1), m15: tfInfo(core.tf.m15), m5: tfInfo(core.tf.m5) },
+    zones: { support: core.sup, resistance: core.res },
+    atrH1: core.atrH1,
+    atrM15: core.tf.m15.ok ? core.tf.m15.vol.atr : null,
+    quality: plan.quality || null,
+    reason: plan.reason || null,
+    // dati del piano: inclusi SEMPRE, non solo sui tre eventi dedicati —
+    // molti setup restano a lungo in stati intermedi (WAITING_RETEST,
+    // WAITING_CONFIRMATION) che l'engine valorizza comunque con entry/SL/TP
+    // indicativi; senza questo, quei setup finirebbero nel database con
+    // numeri vuoti anche se il motore li ha già calcolati.
+    orderType: plan.orderType || null,
+    executionMode: plan.executionMode || null,
+    entryLo: plan.entryLo !== undefined ? plan.entryLo : null,
+    entryHi: plan.entryHi !== undefined ? plan.entryHi : null,
+    sl: plan.sl !== undefined ? plan.sl : null,
+    tp1: plan.tp1 !== undefined ? plan.tp1 : null,
+    tp2: plan.tp2 !== undefined ? plan.tp2 : null,
+    tpFast: plan.tpFast !== undefined ? plan.tpFast : null,
+    rr1: plan.rr1 !== undefined ? plan.rr1 : null,
+    rr2: plan.rr2 !== undefined ? plan.rr2 : null,
+    requiredRR: plan.requiredRR !== undefined ? plan.requiredRR : null
+  };
+}
+
 function publishLifecycleEvents(ctx) {
   var tracker = ctx.tracker, plan = ctx.plan;
+  var setupCtx = buildSetupContext(ctx.core, plan);
 
   // nuovo setup
   if (tracker && tracker.id && tracker.id !== ctx.prevTrackerId) {
-    bus.publish(bus.EVENTS.SETUP_CREATED, {
-      symbol: ctx.symbol, setupId: tracker.id, direction: tracker.dir, state: tracker.state,
+    bus.publish(bus.EVENTS.SETUP_CREATED, Object.assign({
+      symbol: ctx.symbol, setupId: tracker.id, direction: tracker.dir, status: tracker.state,
       confirm: tracker.confirm, invalid: tracker.invalid, target: tracker.target
-    });
+    }, setupCtx));
   } else if (tracker && tracker.state !== ctx.prevState) {
     // transizione di stato di un setup già esistente
     var evType = STATE_EVENTS[tracker.state];
     if (evType) {
-      bus.publish(evType, {
-        symbol: ctx.symbol, setupId: tracker.id, from: ctx.prevState, to: tracker.state,
-        reason: tracker.note || null, outcome: tracker.outcome || null
-      });
+      bus.publish(evType, Object.assign({
+        symbol: ctx.symbol, setupId: tracker.id, direction: tracker.dir, from: ctx.prevState, to: tracker.state, status: tracker.state,
+        invalid: tracker.invalid, outcome: tracker.outcome || null
+      }, setupCtx, { reason: tracker.note || setupCtx.reason }));
     }
   }
 
@@ -180,13 +215,9 @@ function publishLifecycleEvents(ctx) {
   if (planSig !== ctx.prevPlanSig) {
     var planEv = PLAN_STATUS_EVENTS[plan.status];
     if (planEv) {
-      bus.publish(planEv, {
-        symbol: ctx.symbol, setupId: tracker ? tracker.id : null,
-        direction: plan.direction, orderType: plan.orderType, executionMode: plan.executionMode,
-        entryLo: plan.entryLo, entryHi: plan.entryHi, sl: plan.sl,
-        tp1: plan.tp1, tp2: plan.tp2, tpFast: plan.tpFast,
-        rr1: plan.rr1, quality: plan.quality, reason: plan.reason
-      });
+      bus.publish(planEv, Object.assign({
+        symbol: ctx.symbol, setupId: tracker ? tracker.id : null, status: plan.status, direction: plan.direction
+      }, setupCtx));
     }
     store.save('plansig_' + ctx.S, planSig);
   }
