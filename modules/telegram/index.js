@@ -131,6 +131,7 @@ function attach(bus, config, logging, deps) {
     '/history': function () { return commands.cmdHistory({ config: config, repo: repo }, 'XAU/USD'); },
     '/stats': function () { return commands.cmdStats({ config: config, repo: repo }, 'XAU/USD'); },
     '/news': function () { return commands.cmdNews({ config: config, store: store, newsEngine: require('../news/index.js'), newsStats: require('../news/scheduler.js').getStats }); },
+    '/risk': function () { return commands.cmdRisk({ config: config, store: store, riskEngine: require('../riskEngine/index.js'), positionTracker: positionTracker }, 'XAU/USD'); },
     '/help': function () { return commands.cmdHelp(); }
   };
 

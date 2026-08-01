@@ -129,6 +129,50 @@ function cmdNews(ctx) {
   return lines.join('\n');
 }
 
+function cmdRisk(ctx, symbol) {
+  var cfg = ctx.config.get();
+  if (!cfg.risk.enabled) return '💰 Il Risk Engine non è configurato (manca il capitale del conto).';
+
+  var riskEngine = ctx.riskEngine;
+  var openPos = ctx.positionTracker.getOpenPosition(symbol);
+  var today = (ctx.store.load('trades_today_' + symbol.replace('/', ''), []) || [])
+    .filter(function (t) { return (Date.now() - t.closedAt) < 24 * 3600e3; });
+
+  var limits = riskEngine.checkDailyLimits({
+    config: cfg.risk, todayTrades: today,
+    openPositions: openPos ? 1 : 0, accountCapital: cfg.risk.accountCapital
+  });
+
+  var lines = ['💰 <b>Gestione del rischio</b>'];
+  lines.push('Capitale: ' + cfg.risk.accountCapital + ' · Rischio per trade: ' + cfg.risk.riskPercentPerTrade + '%');
+  lines.push('Broker: ' + cfg.risk.contractSize + ' once/lotto · lotto min ' + cfg.risk.minLot);
+  lines.push('');
+  lines.push('Trade oggi: ' + today.length + '/' + cfg.risk.maxDailyTrades);
+  lines.push('Risultato oggi: ' + (limits.totalR >= 0 ? '+' : '') + fmt(limits.totalR) + 'R');
+  lines.push('Perdita giornaliera: ' + fmt(limits.lossPercent) + '% (limite ' + cfg.risk.maxDailyLossPercent + '%)');
+  lines.push('Posizioni aperte: ' + (openPos ? 1 : 0) + '/' + cfg.risk.maxOpenPositions);
+  lines.push('');
+  lines.push(limits.allowed ? '✅ Operatività consentita' : '⛔ BLOCCATO: ' + limits.reason);
+
+  // Se c'è un piano attivo, mostra i lotti calcolati
+  var snap = ctx.store.load('latest_snapshot', null);
+  if (snap && snap.plan && snap.plan.entryLo !== null && snap.plan.sl !== null) {
+    var sizing = riskEngine.computePositionSize({
+      accountCapital: cfg.risk.accountCapital, riskPercentPerTrade: cfg.risk.riskPercentPerTrade,
+      entry: snap.plan.entryLo, sl: snap.plan.sl,
+      contractSize: cfg.risk.contractSize, minLot: cfg.risk.minLot, lotStep: cfg.risk.lotStep
+    });
+    lines.push('');
+    lines.push('<b>Setup corrente:</b>');
+    if (sizing.valid) {
+      lines.push('Lotti: ' + sizing.lots + ' · Rischio: ' + sizing.riskAmount + ' (' + sizing.riskPercentActual + '%)');
+    } else {
+      lines.push('⚠️ ' + sizing.reason);
+    }
+  }
+  return lines.join('\n');
+}
+
 function cmdHelp() {
   return '🤖 <b>Comandi disponibili</b>\n' +
     '/status — stato del servizio\n' +
@@ -137,11 +181,12 @@ function cmdHelp() {
     '/open — posizione attualmente aperta\n' +
     '/history — ultimi trade conclusi\n' +
     '/stats — statistiche di trading\n' +
+    '/risk — gestione del rischio e lotti\n' +
     '/news — stato modulo news\n' +
     '/help — questo elenco';
 }
 
 module.exports = {
   cmdStatus: cmdStatus, cmdMarket: cmdMarket, cmdSetup: cmdSetup, cmdOpen: cmdOpen,
-  cmdHistory: cmdHistory, cmdStats: cmdStats, cmdNews: cmdNews, cmdHelp: cmdHelp
+  cmdHistory: cmdHistory, cmdStats: cmdStats, cmdNews: cmdNews, cmdRisk: cmdRisk, cmdHelp: cmdHelp
 };
