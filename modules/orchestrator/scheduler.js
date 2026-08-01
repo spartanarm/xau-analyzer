@@ -21,6 +21,8 @@ var fetcher = require('../marketData/fetcher.js');
 var marketHours = require('../marketHours/index.js');
 var newsEngine = require('../news/index.js');
 var decisionGate = require('../decisionGate/index.js');
+var riskEngine = require('../riskEngine/index.js');
+var positionTracker = require('../positionTracker/index.js');
 
 var log = logging.forComponent('orchestrator');
 var timer = null;
@@ -174,7 +176,23 @@ async function runCycle(symbol) {
     var newsEvents = store.load('news_events', []);
     newsLock = newsEngine.getNewsLock(newsEvents, now, cfg.news);
   }
-  var gateVerdict = decisionGate.evaluate({ plan: plan, newsLock: newsLock, riskVerdict: { allowed: true } });
+  // Risk Engine: indipendente dal motore, guarda solo capitale ed esposizione
+  var riskVerdict = { allowed: true };
+  if (cfg.risk.enabled) {
+    var openPos = positionTracker.getOpenPosition(symbol);
+    var todayTrades = store.load('trades_today_' + S, []).filter(function (t) {
+      return (now - t.closedAt) < 24 * 3600e3;
+    });
+    riskVerdict = riskEngine.evaluate({
+      config: cfg.risk, entry: plan.entryLo, sl: plan.sl,
+      openPositions: openPos ? 1 : 0, todayTrades: todayTrades
+    });
+    if (riskVerdict.sizing && riskVerdict.sizing.valid) {
+      plan.riskSizing = riskVerdict.sizing; // solo informativo, non altera la tecnica
+    }
+  }
+
+  var gateVerdict = decisionGate.evaluate({ plan: plan, newsLock: newsLock, riskVerdict: riskVerdict });
   if (gateVerdict.blocked) {
     log.info('decision.blocked', gateVerdict.reason, { symbol: symbol, blockedBy: gateVerdict.blockedBy, setupId: tracker ? tracker.id : null });
   }
