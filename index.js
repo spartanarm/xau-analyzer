@@ -86,6 +86,10 @@ api.start();
 initDatabase().finally(function () {
   scheduler.start();
 
+  // News: cadenza propria, separata dal ciclo di prezzo
+  var newsScheduler = require('./modules/news/scheduler.js');
+  newsScheduler.start();
+
   var telegramInstance = telegram.attach(bus, config, logging, {
     store: store, scheduler: scheduler, database: database, repo: repo, positionTracker: positionTracker
   });
