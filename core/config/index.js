@@ -81,12 +81,14 @@ var defaults = {
     maxOpenPositions: 1,
     maxDailyLossPercent: 3.0,      // stop giornaliero
     maxDailyTrades: 5,
-    // PARAMETRI DEL BROKER — critici: sbagliarli significa rischiare un
-    // multiplo di quanto previsto senza accorgersene.
-    // XM con GOLDm usa lotti da 10 once (micro) e lotto minimo 0.10.
-    // Un lotto STANDARD di oro sarebbe invece 100 once: la differenza
-    // è di 10 volte, quindi questo valore va confermato sul proprio conto.
-    contractSize: 10,              // once per lotto (GOLDm su XM = 10)
+    // PARAMETRI DEL BROKER — critici: sbagliarli significa calcolare un
+    // volume sbagliato di un fattore 10 o 100.
+    // Valori VERIFICATI dalle specifiche reali del simbolo GOLDm# su XM
+    // (schermata MT5): Dimensione contratto 1, Volume minimale 0.1,
+    // Step Volume 0.01, valuta profitto USD.
+    // Su altri broker o simboli questi valori cambiano: vanno sempre
+    // riletti dalle specifiche del proprio conto, mai dati per scontati.
+    contractSize: 1,               // once per lotto (GOLDm# su XM = 1)
     minLot: 0.10,
     lotStep: 0.01
   },
