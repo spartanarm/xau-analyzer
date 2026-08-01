@@ -76,11 +76,19 @@ var defaults = {
   // Risk Engine (predisposto — attivato in Fase 6)
   risk: {
     enabled: false,
-    accountCapital: null,
-    riskPercentPerTrade: 1.0,
+    accountCapital: null,          // da variabile d'ambiente ACCOUNT_CAPITAL
+    riskPercentPerTrade: 1.0,      // % del capitale rischiata per trade
     maxOpenPositions: 1,
-    maxDailyLossPercent: 3.0,
-    maxDailyTrades: 5
+    maxDailyLossPercent: 3.0,      // stop giornaliero
+    maxDailyTrades: 5,
+    // PARAMETRI DEL BROKER — critici: sbagliarli significa rischiare un
+    // multiplo di quanto previsto senza accorgersene.
+    // XM con GOLDm usa lotti da 10 once (micro) e lotto minimo 0.10.
+    // Un lotto STANDARD di oro sarebbe invece 100 once: la differenza
+    // è di 10 volte, quindi questo valore va confermato sul proprio conto.
+    contractSize: 10,              // once per lotto (GOLDm su XM = 10)
+    minLot: 0.10,
+    lotStep: 0.01
   },
 
   // Telegram (predisposto — attivato in Fase 4)
@@ -140,6 +148,10 @@ function applyEnv(cfg) {
 
   if (env.ACCOUNT_CAPITAL) { cfg.risk.accountCapital = parseFloat(env.ACCOUNT_CAPITAL); cfg.risk.enabled = true; }
   if (env.RISK_PERCENT) cfg.risk.riskPercentPerTrade = parseFloat(env.RISK_PERCENT);
+  if (env.CONTRACT_SIZE) cfg.risk.contractSize = parseFloat(env.CONTRACT_SIZE);
+  if (env.MIN_LOT) cfg.risk.minLot = parseFloat(env.MIN_LOT);
+  if (env.MAX_DAILY_LOSS_PERCENT) cfg.risk.maxDailyLossPercent = parseFloat(env.MAX_DAILY_LOSS_PERCENT);
+  if (env.MAX_DAILY_TRADES) cfg.risk.maxDailyTrades = parseInt(env.MAX_DAILY_TRADES, 10);
 
   return cfg;
 }
@@ -170,6 +182,15 @@ function validate(cfg) {
   }
   if (cfg.risk.enabled && !(cfg.risk.accountCapital > 0)) {
     errors.push('risk abilitato ma accountCapital non valido');
+  }
+  if (cfg.risk.enabled && !(cfg.risk.contractSize > 0)) {
+    errors.push('risk abilitato ma contractSize non valido: è il numero di once per lotto del tuo broker');
+  }
+  if (cfg.risk.enabled && !(cfg.risk.minLot > 0)) {
+    errors.push('risk abilitato ma minLot non valido');
+  }
+  if (cfg.risk.enabled && (cfg.risk.riskPercentPerTrade <= 0 || cfg.risk.riskPercentPerTrade > 10)) {
+    errors.push('riskPercentPerTrade fuori da un intervallo sensato (0-10%): rischiare più del 10% per trade è pericoloso');
   }
 
   var enabledInstruments = Object.keys(cfg.instruments).filter(function (s) { return cfg.instruments[s].enabled; });
