@@ -73,6 +73,16 @@ function closePosition(symbol, exitPrice, exitReason, ev, storeRef) {
     pnlR: computePnlR(position, exitPrice)
   });
   storeRef.save(keyFor(symbol), null); // libera lo slot: la prossima SETUP_TRADE_READY potrà aprirne una nuova
+
+  // Registra il trade chiuso per i limiti giornalieri del Risk Engine.
+  // Teniamo solo le ultime 24 ore: la lista non cresce all'infinito.
+  var todayKey = 'trades_today_' + symbol.replace('/', '');
+  var today = (storeRef.load(todayKey, []) || []).filter(function (t) {
+    return (Date.now() - t.closedAt) < 24 * 3600e3;
+  });
+  today.push({ setupId: closed.setupId, pnlR: closed.pnlR, closedAt: closed.closedAt, exitReason: closed.exitReason });
+  storeRef.save(todayKey, today);
+
   return closed;
 }
 
