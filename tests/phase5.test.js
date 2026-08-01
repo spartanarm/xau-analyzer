@@ -133,6 +133,33 @@ check('GARANZIA: un evento senza orario valido viene SCARTATO (mai un orario inv
 check('Gli eventi FMP funzionano col News Engine (formato compatibile)',
   newsEngine.getNewsLock(fmpAlt, Date.parse('2026-08-05T13:45:00Z'), NEWS_CFG).locked === true);
 
+// ═══ PROVIDER INTERNO (nessun fornitore esterno, nessun costo) ═══
+console.log('\n═══ PROVIDER INTERNO ═══');
+var builtin = require('../modules/news/provider-builtin.js');
+
+var fomc = builtin.buildFomcEvents();
+check('Le 8 riunioni FOMC del 2026 sono caricate', fomc.length === 8);
+check('FOMC di luglio: 29 luglio alle 18:00 UTC (14:00 ET con ora legale)',
+  fomc.some(function (e) { return e.timestampUtc === Date.parse('2026-07-29T18:00:00Z'); }));
+check('GARANZIA ora legale: FOMC di dicembre alle 19:00 UTC (14:00 ET con ora solare)',
+  fomc.some(function (e) { return e.timestampUtc === Date.parse('2026-12-09T19:00:00Z'); }));
+check('Gli eventi FOMC sono marcati alto impatto', fomc[0].impact === 'high');
+check('La fonte è dichiarata (tracciabilità del dato)', /Federal Reserve/.test(fomc[0].source));
+
+var nfp = builtin.buildNfpEvents(Date.parse('2026-08-01T00:00:00Z'), 90);
+check('Gli eventi NFP sono generati per i mesi successivi', nfp.length === 4);
+check('NFP di agosto 2026: venerdì 7 alle 12:30 UTC (8:30 ET)',
+  nfp.some(function (e) { return e.timestampUtc === Date.parse('2026-08-07T12:30:00Z'); }), new Date(nfp[0].timestampUtc).toISOString());
+check('ONESTÀ: il titolo NFP dichiara che la data è stimata', /stimata/.test(nfp[0].title));
+
+check('Il calcolo dell\'ora legale è corretto (luglio dentro, dicembre fuori)',
+  builtin.isUsDst(2026, 7, 15) === true && builtin.isUsDst(2026, 12, 15) === false);
+
+check('Gli eventi interni funzionano col News Engine',
+  newsEngine.getNewsLock(fomc, Date.parse('2026-07-29T17:45:00Z'), NEWS_CFG).locked === true);
+check('Fuori dalla finestra, nessun blocco',
+  newsEngine.getNewsLock(fomc, Date.parse('2026-07-29T15:00:00Z'), NEWS_CFG).locked === false);
+
 // ═══ ISOLAMENTO: un fornitore news rotto non blocca l'analisi ═══
 console.log('\n═══ ISOLAMENTO ═══');
 process.env.TWELVEDATA_API_KEY = 'test';
