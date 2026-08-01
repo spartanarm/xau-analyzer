@@ -21,6 +21,7 @@ var stats = { lastFetchAt: null, lastError: null, eventsLoaded: 0 };
 
 function getProvider(name) {
   if (name === 'finnhub') return require('./provider-finnhub.js');
+  if (name === 'fmp') return require('./provider-fmp.js');
   return null;
 }
 
