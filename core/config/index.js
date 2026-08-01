@@ -62,7 +62,8 @@ var defaults = {
   // News (predisposto — attivato in Fase 5)
   news: {
     enabled: false,
-    provider: null,               // 'finnhub' | 'fmp' | 'tradingeconomics'
+    provider: null,               // 'builtin' | 'fmp' | 'finnhub'
+    customEvents: [],             // eventi aggiunti a mano: [{date:'2026-08-12', etHour:8, etMinute:30, title:'CPI YoY'}]
     apiKey: null,
     refreshEveryMs: 6 * 60 * 60 * 1000,
     highImpactKeywords: ['FOMC', 'CPI', 'NFP', 'Non-Farm', 'PPI', 'PCE',
