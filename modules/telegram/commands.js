@@ -20,7 +20,13 @@ async function cmdStatus(ctx) {
   var snap = ctx.store.load('latest_snapshot', null);
   var ageMs = snap ? (Date.now() - snap.generatedAt) : null;
 
+  var mkt = st.lastMarketState;
+  var mktLine = mkt
+    ? (mkt.open ? '🟢 Mercato aperto' : '🔴 Mercato chiuso' + (mkt.reason === 'weekend' ? ' (fine settimana)' : ' (nessun dato nuovo)'))
+    : 'Mercato: non ancora valutato';
+
   return '📊 <b>Stato del servizio</b>\n' +
+    mktLine + '\n' +
     'Uptime: ' + fmtDur(st.uptimeMs) + '\n' +
     'Cicli: ' + st.cyclesRun + ' completati, ' + st.cyclesSkipped + ' saltati, ' + st.cyclesFailed + ' falliti\n' +
     'Ultima analisi: ' + (ageMs !== null ? Math.floor(ageMs / 60000) + ' min fa' : 'nessuna ancora') + '\n' +
