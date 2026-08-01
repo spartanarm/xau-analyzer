@@ -155,6 +155,22 @@ check('ONESTÀ: il titolo NFP dichiara che la data è stimata', /stimata/.test(n
 check('Il calcolo dell\'ora legale è corretto (luglio dentro, dicembre fuori)',
   builtin.isUsDst(2026, 7, 15) === true && builtin.isUsDst(2026, 12, 15) === false);
 
+// Eventi ricorrenti: verificati contro la settimana REALE 3-7 agosto 2026
+var ricorrenti = builtin.buildRecurringEvents(Date.parse('2026-08-01T12:00:00Z'), 10);
+function haEvento(lista, isoUtc, testo) {
+  return lista.some(function (e) { return e.timestampUtc === Date.parse(isoUtc) && e.title.indexOf(testo) !== -1; });
+}
+check('ISM Manufacturing: lunedì 3 agosto 14:00 UTC (10:00 ET, primo giorno lavorativo)',
+  haEvento(ricorrenti, '2026-08-03T14:00:00Z', 'ISM Manufacturing'));
+check('ADP: mercoledì 5 agosto 12:15 UTC (8:15 ET, mercoledì prima dell\'NFP)',
+  haEvento(ricorrenti, '2026-08-05T12:15:00Z', 'ADP'));
+check('ISM Services: mercoledì 5 agosto 14:00 UTC (terzo giorno lavorativo)',
+  haEvento(ricorrenti, '2026-08-05T14:00:00Z', 'ISM Services'));
+check('Jobless Claims: giovedì 6 agosto 12:30 UTC (8:30 ET, settimanale)',
+  haEvento(ricorrenti, '2026-08-06T12:30:00Z', 'Jobless Claims'));
+check('ONESTÀ: gli eventi generati da regola dichiarano di essere stimati',
+  ricorrenti.filter(function (e) { return /stimata|settimanale/.test(e.title); }).length === ricorrenti.length);
+
 check('Gli eventi interni funzionano col News Engine',
   newsEngine.getNewsLock(fomc, Date.parse('2026-07-29T17:45:00Z'), NEWS_CFG).locked === true);
 check('Fuori dalla finestra, nessun blocco',
