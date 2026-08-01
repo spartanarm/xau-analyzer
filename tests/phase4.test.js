@@ -165,7 +165,9 @@ var fakeRepo = { getRecentClosedPositions: async function () { return []; }, get
   transport.calls.length = 0;
   transport.setNextUpdates([{ update_id: 13, message: { chat: { id: 111111 }, text: '/news' } }]);
   await tg.pollOnce();
-  check('/news dichiara onestamente che il modulo non è ancora attivo', lastReply(transport).body.text.indexOf('non è ancora attivo') !== -1);
+  // Il modulo News è stato implementato in Fase 5: senza chiave configurata
+  // il comando deve dirlo chiaramente, invece di fingere o dare un errore.
+  check('/news senza fornitore configurato lo dichiara chiaramente', lastReply(transport).body.text.indexOf('non è configurato') !== -1, lastReply(transport).body.text);
 
   // /history e /stats con database disabilitato (fakeDatabase/fakeConfig di default hanno database.enabled=false)
   transport.calls.length = 0;
