@@ -155,6 +155,32 @@ bus.publish(bus.EVENTS.SERVICE_ERROR, {});
 var errorLogged = logger.recent().some(function (r) { return r.level === 'ERROR' && r.event === 'consumer.failed'; });
 check('Gli errori dei consumatori finiscono nel sistema di log strutturato', errorLogged);
 
+// ═══ QUOTA GIORNALIERA API (bug reale trovato dal vivo: il servizio è
+// rimasto cieco per ore dopo aver sfondato il limite di 800/giorno) ═══
+console.log('\n═══ QUOTA GIORNALIERA API ═══');
+var TF_MS_TEST = { m5: 5 * 60e3, m15: 15 * 60e3, h1: 3600e3, h4: 4 * 3600e3 };
+function needsFetchTest(tfMs, lastCandleStart, now) {
+  var currentClosedStart = Math.floor(now / tfMs) * tfMs - tfMs;
+  return lastCandleStart < currentClosedStart;
+}
+var dailyCounts = { m5: 0, m15: 0, h1: 0, h4: 0 };
+var lastSeen = { m5: 0, m15: 0, h1: 0, h4: 0 };
+var dayStart = Date.parse('2026-08-01T00:00:00Z');
+for (var ci = 0; ci < 288; ci++) { // 288 cicli = 24h a intervalli di 5 minuti
+  var nowT = dayStart + ci * 5 * 60e3;
+  ['m5', 'm15', 'h1', 'h4'].forEach(function (k) {
+    if (needsFetchTest(TF_MS_TEST[k], lastSeen[k], nowT)) {
+      dailyCounts[k]++;
+      lastSeen[k] = Math.floor(nowT / TF_MS_TEST[k]) * TF_MS_TEST[k] - TF_MS_TEST[k];
+    }
+  });
+}
+var totalDaily = dailyCounts.m5 + dailyCounts.m15 + dailyCounts.h1 + dailyCounts.h4;
+check('GARANZIA: il consumo giornaliero di richieste API resta sotto il limite di 800', totalDaily < 800, totalDaily + ' richieste/giorno');
+check('H4 viene scaricato solo quando una sua candela chiude davvero (6 volte al giorno, non 288)', dailyCounts.h4 === 6, dailyCounts.h4);
+check('H1 viene scaricato una volta all\'ora, non ogni 5 minuti', dailyCounts.h1 === 24, dailyCounts.h1);
+check('M5 resta aggiornato ad ogni ciclo (è il timeframe del prezzo live)', dailyCounts.m5 === 288, dailyCounts.m5);
+
 console.log('\n' + (fails
   ? '❌ FASE 1: ' + fails + '/' + total + ' TEST FALLITI'
   : '✅ FASE 1: TUTTI I ' + total + ' TEST SUPERATI'));
