@@ -44,6 +44,7 @@ async function health() {
 
   return {
     status: status,
+    market: st.lastMarketState || { open: null, reason: 'non ancora valutato' },
     database: dbHealth,
     reason: status === 'degraded' ? ('ultimo ciclo fallito: ' + st.lastError.message)
       : status === 'stale' ? 'ultima analisi troppo vecchia'
