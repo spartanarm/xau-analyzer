@@ -10,7 +10,7 @@
 
 var https = require('https');
 
-function realTransport(token, method, body) {
+function realTransport(token, method, body, timeoutMs) {
   return new Promise(function (resolve, reject) {
     var payload = JSON.stringify(body || {});
     var req = https.request({
@@ -18,7 +18,12 @@ function realTransport(token, method, body) {
       path: '/bot' + token + '/' + method,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-      timeout: 15000
+      // Il timeout deve SEMPRE superare la durata del long polling, con
+      // margine per la latenza di rete. Bug reale trovato nei log dal
+      // vivo: chiedevamo a Telegram di attendere fino a 25 secondi ma
+      // chiudevamo la connessione dopo 15 — un errore di timeout
+      // garantito ad ogni controllo senza messaggi.
+      timeout: timeoutMs || 15000
     }, function (res) {
       var data = '';
       res.on('data', function (c) { data += c; });
@@ -46,7 +51,9 @@ function makeClient(token, transport) {
   }
 
   function getUpdates(offset, timeoutSec) {
-    return call(token, 'getUpdates', { offset: offset, timeout: timeoutSec || 25 })
+    var pollSec = timeoutSec || 25;
+    // timeout HTTP = durata del polling + 10 secondi di margine per la rete
+    return call(token, 'getUpdates', { offset: offset, timeout: pollSec }, (pollSec + 10) * 1000)
       .then(function (res) {
         if (!res.ok) throw new Error('Telegram getUpdates ha rifiutato: ' + (res.description || JSON.stringify(res)));
         return res.result;

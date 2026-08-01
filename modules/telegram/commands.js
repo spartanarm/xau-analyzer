@@ -99,7 +99,17 @@ function cmdNews(ctx) {
   if (!cfg.news.enabled) return '📰 Il modulo News non è configurato (manca la chiave del fornitore).';
 
   var events = ctx.store.load('news_events', []);
-  if (!events.length) return '📰 Nessun evento in calendario al momento.';
+  if (!events.length) {
+    // Distinzione importante: "calendario vuoto" e "scarico fallito"
+    // sono due situazioni diverse e vanno dette diversamente, altrimenti
+    // un guasto sembra una giornata tranquilla.
+    var st = ctx.newsStats ? ctx.newsStats() : null;
+    if (st && st.lastError) {
+      return '📰 <b>Calendario non disponibile</b>\nL\'ultimo aggiornamento è fallito:\n' + st.lastError.message;
+    }
+    if (st && !st.lastFetchAt) return '📰 Calendario non ancora scaricato (il primo aggiornamento avviene all\'avvio).';
+    return '📰 Nessun evento in calendario al momento.';
+  }
 
   var newsEngine = ctx.newsEngine;
   var now = Date.now();

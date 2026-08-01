@@ -130,7 +130,7 @@ function attach(bus, config, logging, deps) {
     '/open': function () { return commands.cmdOpen({ positionTracker: positionTracker }, 'XAU/USD'); },
     '/history': function () { return commands.cmdHistory({ config: config, repo: repo }, 'XAU/USD'); },
     '/stats': function () { return commands.cmdStats({ config: config, repo: repo }, 'XAU/USD'); },
-    '/news': function () { return commands.cmdNews({ config: config, store: store, newsEngine: require('../news/index.js') }); },
+    '/news': function () { return commands.cmdNews({ config: config, store: store, newsEngine: require('../news/index.js'), newsStats: require('../news/scheduler.js').getStats }); },
     '/help': function () { return commands.cmdHelp(); }
   };
 
