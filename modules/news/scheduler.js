@@ -22,6 +22,7 @@ var stats = { lastFetchAt: null, lastError: null, eventsLoaded: 0 };
 function getProvider(name) {
   if (name === 'finnhub') return require('./provider-finnhub.js');
   if (name === 'fmp') return require('./provider-fmp.js');
+  if (name === 'builtin') return require('./provider-builtin.js');
   return null;
 }
 
@@ -36,7 +37,7 @@ async function refresh(fetchFnOverride) {
   }
 
   try {
-    var events = await provider.fetchEvents(cfg.news.apiKey, Date.now(), 7, fetchFnOverride);
+    var events = await provider.fetchEvents(cfg.news.apiKey, Date.now(), 30, fetchFnOverride || { customEvents: cfg.news.customEvents });
     store.save('news_events', events);
     stats.lastFetchAt = Date.now();
     stats.lastError = null;
