@@ -18,6 +18,7 @@ var bus = require('../../core/events/index.js');
 var store = require('../persistence/stateStore.js');
 var marketEngine = require('../marketEngine/index.js');
 var fetcher = require('../marketData/fetcher.js');
+var marketHours = require('../marketHours/index.js');
 
 var log = logging.forComponent('orchestrator');
 var timer = null;
@@ -59,6 +60,17 @@ async function runCycle(symbol) {
   var S = sym(symbol);
   bus.publish(bus.EVENTS.CYCLE_STARTED, { symbol: symbol });
 
+  // 0. MERCATO CHIUSO — controllo di calendario PRIMA del fetch, così
+  // nel fine settimana non sprechiamo nemmeno una chiamata API.
+  var nowCheck = Date.now();
+  if (marketHours.isWeekendClosed(nowCheck)) {
+    log.debug('cycle.marketClosed', 'mercato chiuso (fine settimana): nessuna analisi');
+    bus.publish(bus.EVENTS.CYCLE_MARKET_CLOSED, { symbol: symbol, reason: 'weekend', message: 'Mercato chiuso (fine settimana)' });
+    stats.cyclesSkipped++;
+    stats.lastMarketState = { open: false, reason: 'weekend', at: nowCheck };
+    return;
+  }
+
   // 1. dati di mercato
   var candles;
   try {
@@ -78,6 +90,20 @@ async function runCycle(symbol) {
     bus.publish(bus.EVENTS.CYCLE_SKIPPED, { symbol: symbol, reason: 'no_price' });
     return;
   }
+
+  // 0-bis. MERCATO FERMO — controllo sui DATI, che cattura festività e
+  // chiusure che il calendario non prevede. Va qui perché richiede le
+  // candele appena scaricate.
+  var now = Date.now();
+  var marketState = marketHours.getMarketState({ now: now, lastCandleTs: m5[m5.length - 1].t });
+  if (!marketState.open) {
+    log.info('cycle.marketClosed', marketState.message, { symbol: symbol, reason: marketState.reason });
+    bus.publish(bus.EVENTS.CYCLE_MARKET_CLOSED, { symbol: symbol, reason: marketState.reason, message: marketState.message });
+    stats.cyclesSkipped++;
+    stats.lastMarketState = { open: false, reason: marketState.reason, at: now };
+    return;
+  }
+  stats.lastMarketState = { open: true, reason: null, at: now };
 
   // 2. ANTI-RICALCOLO
   var sig = candleSignature(candles);
@@ -99,7 +125,6 @@ async function runCycle(symbol) {
   var prevPlanSig = store.load('plansig_' + S, null);
 
   // 4. MOTORE (invariato)
-  var now = Date.now();
   var result;
   try {
     result = marketEngine.analyze({
