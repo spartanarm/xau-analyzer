@@ -107,6 +107,32 @@ check('I campi previsione/precedente sono mappati', normalizzati[0].forecast ===
 check('Gli eventi tradotti funzionano col News Engine (formato compatibile)',
   newsEngine.getNewsLock(normalizzati, Date.parse('2026-08-05T12:15:00Z'), NEWS_CFG).locked === true);
 
+// ═══ ADAPTER FMP (scritto in modo difensivo: i nomi esatti dei campi
+// non erano verificabili dalla documentazione) ═══
+console.log('\n═══ ADAPTER FMP ═══');
+var fmp = require('../modules/news/provider-fmp.js');
+
+var fmpStandard = fmp.normalize([
+  { date: '2026-08-05 12:30:00', country: 'US', currency: 'USD', event: 'CPI YoY', impact: 'High', estimate: 2.4, previous: 2.6 }
+]);
+check('Formato documentato: tradotto correttamente', fmpStandard.length === 1 && fmpStandard[0].timestampUtc === Date.parse('2026-08-05T12:30:00Z'));
+check('Impatto e previsione mappati', fmpStandard[0].impact === 'High' && fmpStandard[0].forecast === 2.4);
+
+var fmpAlt = fmp.normalize([
+  { time: '2026-08-05T14:00:00Z', currency: 'USD', name: 'FOMC Rate Decision', importance: 'high', forecast: 1, prev: 2 }
+]);
+check('GARANZIA: nomi di campo alternativi funzionano lo stesso (adapter tollerante)', fmpAlt.length === 1 && fmpAlt[0].title === 'FOMC Rate Decision');
+
+var fmpSporco = fmp.normalize([
+  { date: 'data-non-valida', event: 'Evento senza orario' },
+  { date: '2026-08-05 10:00:00', event: 'Evento valido' },
+  { date: '2026-08-05 11:00:00' }
+]);
+check('GARANZIA: un evento senza orario valido viene SCARTATO (mai un orario inventato)', fmpSporco.length === 1 && fmpSporco[0].title === 'Evento valido');
+
+check('Gli eventi FMP funzionano col News Engine (formato compatibile)',
+  newsEngine.getNewsLock(fmpAlt, Date.parse('2026-08-05T13:45:00Z'), NEWS_CFG).locked === true);
+
 // ═══ ISOLAMENTO: un fornitore news rotto non blocca l'analisi ═══
 console.log('\n═══ ISOLAMENTO ═══');
 process.env.TWELVEDATA_API_KEY = 'test';
