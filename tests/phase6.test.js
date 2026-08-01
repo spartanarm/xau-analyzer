@@ -15,7 +15,9 @@ var risk = require('../modules/riskEngine/index.js');
 var gate = require('../modules/decisionGate/index.js');
 
 // Configurazione che rispecchia il conto reale: XM, GOLDm, micro lotti
-var BROKER = { contractSize: 10, minLot: 0.10, lotStep: 0.01 };
+// Valori VERIFICATI dalle specifiche reali di GOLDm# su XM (MT5):
+// Dimensione contratto 1, Volume minimale 0.1, Step Volume 0.01
+var BROKER = { contractSize: 1, minLot: 0.10, lotStep: 0.01 };
 
 // ═══ DIMENSIONE POSIZIONE ═══
 console.log('\n═══ DIMENSIONE POSIZIONE ═══');
@@ -23,7 +25,7 @@ console.log('\n═══ DIMENSIONE POSIZIONE ═══');
 var r1 = risk.computePositionSize(Object.assign({
   accountCapital: 1000, riskPercentPerTrade: 1, entry: 4100, sl: 4090
 }, BROKER));
-check('1000€, rischio 1%, stop 10$ → 0.10 lotti', r1.valid && r1.lots === 0.10, r1.lots);
+check('1000€, rischio 1%, stop 10$ → 1.00 lotti', r1.valid && r1.lots === 1.00, r1.lots);
 check('Il rischio effettivo è esattamente 10 (1% di 1000)', r1.riskAmount === 10);
 check('La percentuale reale coincide con quella desiderata', r1.riskPercentActual === 1);
 
@@ -32,19 +34,19 @@ check('La percentuale reale coincide con quella desiderata', r1.riskPercentActua
 var r2 = risk.computePositionSize(Object.assign({
   accountCapital: 1000, riskPercentPerTrade: 1, entry: 4100, sl: 4080
 }, BROKER));
-check('Stop doppio (20$) → servirebbero 0.05 lotti, sotto il minimo del broker', r2.valid === false && r2.lotsRequired === 0.05, r2.lotsRequired);
-check('GARANZIA: rifiuta invece di accettare il doppio del rischio previsto', /2% del capitale/.test(r2.reason), r2.reason);
+check('Stop doppio (20$) → lotti dimezzati (0.50)', r2.valid && r2.lots === 0.50, r2.lots);
+check('Ma il rischio in denaro resta 10 (è il senso della formula)', r2.riskAmount === 10);
 
 // Con capitale doppio, lo stesso stop torna gestibile
 var r2b = risk.computePositionSize(Object.assign({
   accountCapital: 2000, riskPercentPerTrade: 1, entry: 4100, sl: 4080
 }, BROKER));
-check('Stop 20$ con capitale 2000 → 0.10 lotti, rischio esatto 20 (1%)', r2b.valid && r2b.lots === 0.10 && r2b.riskAmount === 20);
+check('Stop 20$ con capitale 2000 → 1.00 lotti, rischio esatto 20 (1%)', r2b.valid && r2b.lots === 1.00 && r2b.riskAmount === 20);
 
 var r3 = risk.computePositionSize(Object.assign({
   accountCapital: 5000, riskPercentPerTrade: 2, entry: 4100, sl: 4095
 }, BROKER));
-check('5000€, rischio 2%, stop 5$ → 2.00 lotti', r3.valid && r3.lots === 2.00, r3.lots);
+check('5000€, rischio 2%, stop 5$ → 20.00 lotti', r3.valid && r3.lots === 20.00, r3.lots);
 check('Rischio 100 (2% di 5000)', r3.riskAmount === 100);
 
 // GARANZIA: arrotondamento sempre per difetto
@@ -60,9 +62,9 @@ var rPiccolo = risk.computePositionSize(Object.assign({
   accountCapital: 77, riskPercentPerTrade: 1, entry: 4100, sl: 4090
 }, BROKER));
 check('GARANZIA CRITICA: con 77€ e stop 10$, il lotto minimo è RIFIUTATO', rPiccolo.valid === false);
-check('Il motivo dice esattamente quanto si rischierebbe davvero', /12.99%/.test(rPiccolo.reason), rPiccolo.reason);
+check('Il motivo dice esattamente quanto si rischierebbe davvero', /1.3%/.test(rPiccolo.reason), rPiccolo.reason);
 check('Espone il rischio reale del lotto minimo (per decidere consapevolmente)',
-  rPiccolo.riskAtMinLot === 10 && rPiccolo.riskPercentAtMinLot === 12.99);
+  rPiccolo.riskAtMinLot === 1 && rPiccolo.riskPercentAtMinLot === 1.3);
 
 // Con uno stop più stretto, lo stesso capitale può bastare
 var rStretto = risk.computePositionSize(Object.assign({
@@ -72,11 +74,13 @@ check('Stop stretto (1$) e rischio 10% → operazione possibile anche con 77€'
 
 // ═══ DIMENSIONE CONTRATTO: l'errore da 10 volte ═══
 console.log('\n═══ DIMENSIONE CONTRATTO ═══');
+var rUno = risk.computePositionSize({ accountCapital: 1000, riskPercentPerTrade: 1, entry: 4100, sl: 4090, contractSize: 1, minLot: 0.10, lotStep: 0.01 });
 var rMicro = risk.computePositionSize({ accountCapital: 1000, riskPercentPerTrade: 1, entry: 4100, sl: 4090, contractSize: 10, minLot: 0.10, lotStep: 0.01 });
 var rStandard = risk.computePositionSize({ accountCapital: 1000, riskPercentPerTrade: 1, entry: 4100, sl: 4090, contractSize: 100, minLot: 0.01, lotStep: 0.01 });
-check('GARANZIA: contratto da 10 once → 0.10 lotti', rMicro.lots === 0.10);
-check('GARANZIA: contratto da 100 once → 0.01 lotti (10 volte meno)', rStandard.lots === 0.01);
-check('In entrambi i casi il rischio in denaro è identico (10)', rMicro.riskAmount === 10 && rStandard.riskAmount === 10);
+check('GARANZIA: contratto da 1 oncia (GOLDm reale) → 1.00 lotti', rUno.lots === 1.00);
+check('GARANZIA: contratto da 10 once → 0.10 lotti (10 volte meno)', rMicro.lots === 0.10);
+check('GARANZIA: contratto da 100 once → 0.01 lotti (100 volte meno)', rStandard.lots === 0.01);
+check('In tutti i casi il rischio in denaro è identico (10): è la dimensione contratto a cambiare i lotti', rUno.riskAmount === 10 && rMicro.riskAmount === 10 && rStandard.riskAmount === 10);
 
 // ═══ CASI LIMITE ═══
 console.log('\n═══ CASI LIMITE ═══');
@@ -86,7 +90,7 @@ check('Stop a distanza zero → rifiutato (mai una divisione per zero)', risk.co
 
 // ═══ LIMITI GIORNALIERI ═══
 console.log('\n═══ LIMITI GIORNALIERI ═══');
-var CFG = { enabled: true, accountCapital: 1000, riskPercentPerTrade: 1, maxOpenPositions: 1, maxDailyLossPercent: 3, maxDailyTrades: 5, contractSize: 10, minLot: 0.10, lotStep: 0.01 };
+var CFG = { enabled: true, accountCapital: 1000, riskPercentPerTrade: 1, maxOpenPositions: 1, maxDailyLossPercent: 3, maxDailyTrades: 5, contractSize: 1, minLot: 0.10, lotStep: 0.01 };
 
 check('Nessun trade oggi → consentito', risk.checkDailyLimits({ config: CFG, todayTrades: [], openPositions: 0 }).allowed === true);
 check('Posizione già aperta → bloccato', risk.checkDailyLimits({ config: CFG, todayTrades: [], openPositions: 1 }).allowed === false);
@@ -111,7 +115,7 @@ var piano = { action: 'PLAN', status: 'TRADE_READY', direction: 'BUY', entryLo: 
 
 var vOk = risk.evaluate({ config: CFG, entry: 4100, sl: 4090, openPositions: 0, todayTrades: [] });
 check('Risk Engine autorizza quando tutto è in regola', vOk.allowed === true);
-check('E fornisce i lotti calcolati', vOk.sizing && vOk.sizing.lots === 0.10);
+check('E fornisce i lotti calcolati', vOk.sizing && vOk.sizing.lots === 1.00, vOk.sizing.lots);
 
 var gOk = gate.evaluate({ plan: piano, newsLock: { locked: false }, riskVerdict: vOk });
 check('Il Decision Gate lascia passare → ACTIONABLE', gOk.decision === gate.DECISIONS.ACTIONABLE);
