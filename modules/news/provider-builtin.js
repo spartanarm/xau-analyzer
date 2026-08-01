@@ -70,25 +70,112 @@ function buildFomcEvents() {
 }
 
 // NFP: primo venerdì del mese alle 8:30 ET.
-function buildNfpEvents(now, daysAhead) {
-  var out = [];
-  var start = new Date(now);
-  for (var i = 0; i < 4; i++) { // mese corrente + 3 successivi
+function firstWeekdayOfMonth(year, month, weekday) {
+  var d = new Date(Date.UTC(year, month - 1, 1));
+  return 1 + ((weekday - d.getUTCDay() + 7) % 7);
+}
+
+// N-esimo giorno LAVORATIVO del mese (lunedì-venerdì; non considera le
+// festività americane, quindi la data può slittare di un giorno).
+function nthBusinessDay(year, month, n) {
+  var day = 0, count = 0;
+  while (count < n && day < 31) {
+    day++;
+    var wd = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    if (wd !== 0 && wd !== 6) count++;
+  }
+  return day;
+}
+
+function dateStr(y, m, d) {
+  return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+}
+
+function monthsAhead(now, count) {
+  var out = [], start = new Date(now);
+  for (var i = 0; i < count; i++) {
     var y = start.getUTCFullYear(), m = start.getUTCMonth() + 1 + i;
     while (m > 12) { m -= 12; y += 1; }
-    var d = new Date(Date.UTC(y, m - 1, 1));
-    var firstFriday = 1 + ((5 - d.getUTCDay() + 7) % 7);
-    var dateStr = y + '-' + String(m).padStart(2, '0') + '-' + String(firstFriday).padStart(2, '0');
-    out.push({
-      id: 'nfp|' + dateStr,
-      timestampUtc: etToUtcMs(dateStr, 8, 30),
+    out.push({ y: y, m: m });
+  }
+  return out;
+}
+
+function buildNfpEvents(now, daysAhead) {
+  return monthsAhead(now, 4).map(function (p) {
+    var ds = dateStr(p.y, p.m, firstWeekdayOfMonth(p.y, p.m, 5)); // 5 = venerdì
+    return {
+      id: 'nfp|' + ds,
+      timestampUtc: etToUtcMs(ds, 8, 30),
       currency: 'USD',
       title: 'Non-Farm Payrolls (data stimata: primo venerdì del mese)',
       impact: 'high',
       actual: null, forecast: null, previous: null,
       source: 'builtin (regola BLS standard — la data può variare)'
+    };
+  });
+}
+
+// Altri eventi ricorrenti ad alto impatto per il dollaro, con regole di
+// pubblicazione documentate:
+//   · ISM Manufacturing PMI → primo giorno lavorativo del mese, 10:00 ET
+//     (regola dichiarata dall'ISM stesso)
+//   · ISM Services PMI → terzo giorno lavorativo del mese, 10:00 ET
+//   · ADP Employment → mercoledì della settimana dell'NFP, 8:15 ET
+//   · Initial Jobless Claims → ogni giovedì, 8:30 ET
+// Tutte marcate come STIMATE: le festività americane possono spostarle.
+function buildRecurringEvents(now, daysAhead) {
+  var out = [];
+
+  monthsAhead(now, 4).forEach(function (p) {
+    var ismM = dateStr(p.y, p.m, nthBusinessDay(p.y, p.m, 1));
+    out.push({
+      id: 'ism-manu|' + ismM, timestampUtc: etToUtcMs(ismM, 10, 0), currency: 'USD',
+      title: 'ISM Manufacturing PMI (data stimata: primo giorno lavorativo)',
+      impact: 'high', actual: null, forecast: null, previous: null,
+      source: 'builtin (regola ISM — può slittare per festività)'
     });
+
+    var ismS = dateStr(p.y, p.m, nthBusinessDay(p.y, p.m, 3));
+    out.push({
+      id: 'ism-serv|' + ismS, timestampUtc: etToUtcMs(ismS, 10, 0), currency: 'USD',
+      title: 'ISM Services PMI (data stimata: terzo giorno lavorativo)',
+      impact: 'high', actual: null, forecast: null, previous: null,
+      source: 'builtin (regola ISM — può slittare per festività)'
+    });
+
+    // ADP: mercoledì della stessa settimana dell'NFP (2 giorni prima)
+    var friday = firstWeekdayOfMonth(p.y, p.m, 5);
+    var adpDay = friday - 2;
+    if (adpDay >= 1) {
+      var adp = dateStr(p.y, p.m, adpDay);
+      out.push({
+        id: 'adp|' + adp, timestampUtc: etToUtcMs(adp, 8, 15), currency: 'USD',
+        title: 'ADP Employment Report (data stimata: mercoledì prima dell\'NFP)',
+        impact: 'high', actual: null, forecast: null, previous: null,
+        source: 'builtin (regola ADP — può variare)'
+      });
+    }
+  });
+
+  // Jobless Claims: ogni giovedì nell'orizzonte richiesto
+  var d = new Date(now);
+  var horizon = now + (daysAhead || 30) * 24 * 3600e3;
+  var cursor = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  while (cursor <= horizon) {
+    var day = new Date(cursor);
+    if (day.getUTCDay() === 4) { // giovedì
+      var jc = dateStr(day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate());
+      out.push({
+        id: 'claims|' + jc, timestampUtc: etToUtcMs(jc, 8, 30), currency: 'USD',
+        title: 'Initial Jobless Claims (settimanale, giovedì)',
+        impact: 'high', actual: null, forecast: null, previous: null,
+        source: 'builtin (regola DOL settimanale)'
+      });
+    }
+    cursor += 24 * 3600e3;
   }
+
   return out;
 }
 
@@ -112,6 +199,7 @@ async function fetchEvents(apiKey, now, daysAhead, options) {
   var horizon = now + (daysAhead || 7) * 24 * 3600e3;
   var all = buildFomcEvents()
     .concat(buildNfpEvents(now, daysAhead))
+    .concat(buildRecurringEvents(now, daysAhead))
     .concat(buildCustomEvents(options && options.customEvents));
 
   // solo gli eventi dentro l'orizzonte richiesto, ordinati
@@ -124,6 +212,7 @@ module.exports = {
   fetchEvents: fetchEvents,
   buildFomcEvents: buildFomcEvents,
   buildNfpEvents: buildNfpEvents,
+  buildRecurringEvents: buildRecurringEvents,
   etToUtcMs: etToUtcMs,
   isUsDst: isUsDst,
   name: 'builtin'
