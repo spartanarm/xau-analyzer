@@ -21,6 +21,7 @@ var EVENTS = {
   CYCLE_STARTED: 'cycle.started',
   CYCLE_COMPLETED: 'cycle.completed',
   CYCLE_SKIPPED: 'cycle.skipped',          // anti-ricalcolo: nulla di nuovo
+  CYCLE_MARKET_CLOSED: 'cycle.marketClosed', // mercato chiuso: nessuna analisi, nessuna notifica
   CYCLE_FAILED: 'cycle.failed',
 
   // dati di mercato
