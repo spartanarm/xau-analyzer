@@ -19,6 +19,8 @@ var store = require('../persistence/stateStore.js');
 var marketEngine = require('../marketEngine/index.js');
 var fetcher = require('../marketData/fetcher.js');
 var marketHours = require('../marketHours/index.js');
+var newsEngine = require('../news/index.js');
+var decisionGate = require('../decisionGate/index.js');
 
 var log = logging.forComponent('orchestrator');
 var timer = null;
@@ -164,10 +166,26 @@ async function runCycle(symbol) {
   store.save('latest_snapshot', snapshot);
   store.save('latest_snapshot_' + S, snapshot);
 
+  // 5-bis. DECISION GATE: compone i verdetti indipendenti. Il motore ha
+  // già deciso la parte tecnica e non viene toccato — qui si aggiunge
+  // solo il contesto (news, rischio) che il motore non deve conoscere.
+  var newsLock = { locked: false };
+  if (cfg.news.enabled) {
+    var newsEvents = store.load('news_events', []);
+    newsLock = newsEngine.getNewsLock(newsEvents, now, cfg.news);
+  }
+  var gateVerdict = decisionGate.evaluate({ plan: plan, newsLock: newsLock, riskVerdict: { allowed: true } });
+  if (gateVerdict.blocked) {
+    log.info('decision.blocked', gateVerdict.reason, { symbol: symbol, blockedBy: gateVerdict.blockedBy, setupId: tracker ? tracker.id : null });
+  }
+  snapshot.gate = gateVerdict;
+  store.save('latest_snapshot', snapshot);
+  store.save('latest_snapshot_' + S, snapshot);
+
   // 6. EVENTI: solo sulle transizioni reali
   publishLifecycleEvents({
     symbol: symbol, S: S, tracker: tracker, plan: plan, radar: result.radar, core: result.core, price: price,
-    prevTrackerId: prevTrackerId, prevState: prevState, prevPlanSig: prevPlanSig
+    prevTrackerId: prevTrackerId, prevState: prevState, prevPlanSig: prevPlanSig, gateVerdict: gateVerdict
   });
 
   stats.cyclesRun++;
@@ -236,13 +254,26 @@ function publishLifecycleEvents(ctx) {
   }
 
   // stato del piano: firma per non ripubblicare lo stesso stato
-  var planSig = [plan.status, plan.orderType, tracker ? tracker.id : ''].join('|');
+  var planSig = [plan.status, plan.orderType, tracker ? tracker.id : '', ctx.gateVerdict ? ctx.gateVerdict.decision : ''].join('|');
   if (planSig !== ctx.prevPlanSig) {
     var planEv = PLAN_STATUS_EVENTS[plan.status];
     if (planEv) {
-      bus.publish(planEv, Object.assign({
-        symbol: ctx.symbol, setupId: tracker ? tracker.id : null, status: plan.status, direction: plan.direction
-      }, setupCtx));
+      var gate = ctx.gateVerdict;
+      // DECISION GATE: se il setup è tecnicamente valido ma bloccato
+      // (news o rischio), NON pubblichiamo l'evento di trade — sarebbe
+      // un segnale operativo su cui non si deve agire. Pubblichiamo
+      // invece un evento distinto, che spiega il blocco.
+      if (gate && gate.blocked) {
+        bus.publish(bus.EVENTS.DECISION_BLOCKED, Object.assign({
+          symbol: ctx.symbol, setupId: tracker ? tracker.id : null, status: plan.status,
+          direction: plan.direction, blockedBy: gate.blockedBy, gateReason: gate.reason,
+          newsContext: gate.newsContext
+        }, setupCtx));
+      } else {
+        bus.publish(planEv, Object.assign({
+          symbol: ctx.symbol, setupId: tracker ? tracker.id : null, status: plan.status, direction: plan.direction
+        }, setupCtx));
+      }
     }
     store.save('plansig_' + ctx.S, planSig);
   }
