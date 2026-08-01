@@ -93,22 +93,53 @@ async function fetchTimeframe(tfKey, reqTimesRef) {
   return trimmed;
 }
 
+// Un timeframe va riscaricato SOLO quando una sua candela è realmente
+// chiusa dall'ultimo scarico. Una candela H4 chiude ogni 4 ore: scaricare
+// H4 ogni 5 minuti sprecava oltre 280 richieste al giorno per nulla.
+//
+// Consumo giornaliero con questa regola:
+//   M5  288/giorno · M15 96 · H1 24 · H4 6  →  circa 414 totali
+// contro le ~1150 di prima, che sfondavano il limite giornaliero di 800
+// imposto da Twelve Data (verificato dal vivo: servizio cieco per ore).
+function needsFetch(tfKey, cached, now) {
+  if (!cached || !cached.length) return true; // nessun dato: serve scaricare
+  var tfMs = TF_DEF[tfKey].ms;
+  var lastCandleStart = cached[cached.length - 1].t;
+  // inizio dell'ultima candela che risulta CHIUSA in questo momento
+  var currentClosedStart = Math.floor(now / tfMs) * tfMs - tfMs;
+  return lastCandleStart < currentClosedStart;
+}
+
 async function fetchAllTimeframes() {
   var reqTimesRef = { times: loadReqTimes() };
   var out = {};
   var tfList = ['m5', 'm15', 'h1', 'h4'];
+  var now = Date.now();
+  var fetched = [], reused = [];
+
   try {
     for (var tfKey of tfList) {
-      out[tfKey] = await fetchTimeframe(tfKey, reqTimesRef);
+      var cached = store.load('candles_' + tfKey, []);
+      if (needsFetch(tfKey, cached, now)) {
+        out[tfKey] = await fetchTimeframe(tfKey, reqTimesRef);
+        fetched.push(tfKey);
+      } else {
+        out[tfKey] = cached; // nessuna candela nuova: riuso quelle in cache
+        reused.push(tfKey);
+      }
     }
   } catch (err) {
-    log.error('fetch.failed', 'aggiornamento dati di mercato fallito: ' + err.message, { requestsUsed: reqTimesRef.times.length });
+    log.error('fetch.failed', 'aggiornamento dati di mercato fallito: ' + err.message, { requestsUsed: reqTimesRef.times.length, fetched: fetched });
     bus.publish(bus.EVENTS.MARKET_DATA_FAILED, { error: err.message });
     throw err;
   }
+
+  if (fetched.length) {
+    log.debug('fetch.done', 'timeframe aggiornati: ' + (fetched.join(', ') || 'nessuno') + ' · riusati dalla cache: ' + (reused.join(', ') || 'nessuno'));
+  }
   bus.publish(bus.EVENTS.MARKET_DATA_UPDATED, {
     counts: tfList.reduce(function (a, k) { a[k] = out[k].length; return a; }, {}),
-    requestsUsed: reqTimesRef.times.length
+    requestsUsed: reqTimesRef.times.length, fetched: fetched, reused: reused
   });
   return out;
 }
