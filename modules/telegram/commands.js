@@ -94,8 +94,29 @@ async function cmdStats(ctx, symbol) {
     (s.trades < 30 ? '\n⚠️ Campione ancora piccolo (' + s.trades + ' trade): questi numeri non sono ancora statisticamente affidabili.' : '');
 }
 
-function cmdNews() {
-  return '📰 Il modulo News non è ancora attivo — arriverà in una fase successiva del progetto.';
+function cmdNews(ctx) {
+  var cfg = ctx.config.get();
+  if (!cfg.news.enabled) return '📰 Il modulo News non è configurato (manca la chiave del fornitore).';
+
+  var events = ctx.store.load('news_events', []);
+  if (!events.length) return '📰 Nessun evento in calendario al momento.';
+
+  var newsEngine = ctx.newsEngine;
+  var now = Date.now();
+  var lock = newsEngine.getNewsLock(events, now, cfg.news);
+  var upcoming = newsEngine.getUpcoming(events, now, cfg.news, 5);
+
+  var lines = ['📰 <b>Calendario economico</b>'];
+  if (lock.locked) lines.push('🔒 <b>NEWS LOCK ATTIVO</b>: ' + lock.reason);
+  if (!upcoming.length) { lines.push('Nessun evento ad alto impatto nei prossimi giorni.'); return lines.join('\n'); }
+
+  lines.push('');
+  upcoming.forEach(function (e) {
+    var mins = Math.round((e.timestampUtc - now) / 60000);
+    var quando = mins < 60 ? (mins + ' min') : (mins < 1440 ? (Math.round(mins / 60) + 'h') : (Math.round(mins / 1440) + 'g'));
+    lines.push('· ' + e.title + ' — tra ' + quando);
+  });
+  return lines.join('\n');
 }
 
 function cmdHelp() {

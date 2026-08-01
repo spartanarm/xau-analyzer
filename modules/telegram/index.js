@@ -93,6 +93,17 @@ function attach(bus, config, logging, deps) {
   bus.subscribe(bus.EVENTS.SETUP_INVALIDATED, 'telegram', function (ev) { handleNeverOpenedTermination(ev, 'Setup invalidato'); });
   bus.subscribe(bus.EVENTS.SETUP_EXPIRED, 'telegram', function (ev) { handleNeverOpenedTermination(ev, 'Setup scaduto'); });
 
+  bus.subscribe(bus.EVENTS.DECISION_BLOCKED, 'telegram', function (ev) {
+    var p = ev.payload;
+    var icona = p.blockedBy === 'news' ? '🔒' : '⛔';
+    broadcast(icona + ' <b>Setup valido ma BLOCCATO</b> ' + (p.direction || '') + ' su ' + p.symbol + '\n' + (p.gateReason || ''));
+  });
+
+  bus.subscribe(bus.EVENTS.NEWS_HIGH_IMPACT_UPCOMING, 'telegram', function (ev) {
+    var p = ev.payload;
+    broadcast('⚠️ <b>News ad alto impatto in arrivo</b>\n' + p.title + ' tra ' + p.minutesAway + ' minuti');
+  });
+
   bus.subscribe(bus.EVENTS.RADAR_OPPORTUNITY, 'telegram', function (ev) {
     var opportunities = ev.payload.opportunities || [];
     var fresh = opportunities.filter(function (o) { return radarNotified.indexOf(o.id) === -1; });
@@ -119,7 +130,7 @@ function attach(bus, config, logging, deps) {
     '/open': function () { return commands.cmdOpen({ positionTracker: positionTracker }, 'XAU/USD'); },
     '/history': function () { return commands.cmdHistory({ config: config, repo: repo }, 'XAU/USD'); },
     '/stats': function () { return commands.cmdStats({ config: config, repo: repo }, 'XAU/USD'); },
-    '/news': function () { return commands.cmdNews(); },
+    '/news': function () { return commands.cmdNews({ config: config, store: store, newsEngine: require('../news/index.js') }); },
     '/help': function () { return commands.cmdHelp(); }
   };
 
