@@ -48,7 +48,14 @@ bus.setErrorReporter(function (info) {
 // ── 4. POSITION TRACKER (sempre attivo: la sua memoria vive su file,
 // non dipende dal database — segue i trade anche se il database è spento) ──
 var positionTracker = require('./modules/positionTracker/index.js');
+var store = require('./modules/persistence/stateStore.js');
+var repo = require('./modules/database/repository.js');
 positionTracker.attach(bus, config, logging);
+
+// ── MEASUREMENT LAYER: osserva e registra ogni decisione, comprese
+// quelle bloccate. Non influenza mai il comportamento del sistema. ──
+var measurement = require('./modules/measurement/index.js');
+measurement.attach(bus, config, logging, { store: store, repo: repo });
 
 // ── 5. DATABASE (opzionale: se non configurato, resta inattivo) ──
 var database = require('./modules/database/index.js');
@@ -73,8 +80,6 @@ async function initDatabase() {
 var api = require('./modules/api/server.js');
 var scheduler = require('./modules/orchestrator/scheduler.js');
 var telegram = require('./modules/telegram/index.js');
-var store = require('./modules/persistence/stateStore.js');
-var repo = require('./modules/database/repository.js');
 
 log.info('service.starting', 'avvio piattaforma XAU/USD', {
   instruments: Object.keys(cfg.instruments).filter(function (s) { return cfg.instruments[s].enabled; }),
