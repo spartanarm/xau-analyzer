@@ -136,6 +136,39 @@ FakePool.prototype.query = function (text, params) {
       return resolve({ rows: [] });
     }
 
+    if (/^INSERT INTO blocked_decisions/.test(t)) {
+      self.tables.blocked_decisions = self.tables.blocked_decisions || [];
+      var dup = self.tables.blocked_decisions.some(function (r) { return r.symbol === params[0] && r.setup_id === params[1]; });
+      if (!dup) {
+        self.tables.blocked_decisions.push({
+          symbol: params[0], setup_id: params[1], direction: params[2], blocked_at: params[3],
+          blocked_by: params[4], block_reason: params[5], entry: params[6], sl: params[7], tp1: params[8],
+          grade: params[9], confidence: params[10], execution_mode: params[11], outcome: null, hypothetical_r: null
+        });
+      }
+      return resolve({ rows: [] });
+    }
+
+    if (/^UPDATE blocked_decisions SET resolved_at/.test(t)) {
+      self.tables.blocked_decisions = self.tables.blocked_decisions || [];
+      var row = self.tables.blocked_decisions.find(function (r) {
+        return r.symbol === params[4] && r.setup_id === params[5] && r.outcome === null;
+      });
+      if (row) { row.resolved_at = params[0]; row.outcome = params[1]; row.exit_price = params[2]; row.hypothetical_r = params[3]; }
+      return resolve({ rows: [] });
+    }
+
+    if (/^SELECT blocked_by, outcome/.test(t)) {
+      var groups = {};
+      (self.tables.blocked_decisions || []).filter(function (r) { return r.symbol === params[0]; }).forEach(function (r) {
+        var k = r.blocked_by + '|' + r.outcome;
+        groups[k] = groups[k] || { blocked_by: r.blocked_by, outcome: r.outcome, n: 0, sum_r: 0 };
+        groups[k].n++;
+        if (r.hypothetical_r !== null) groups[k].sum_r += r.hypothetical_r;
+      });
+      return resolve({ rows: Object.keys(groups).map(function (k) { return groups[k]; }) });
+    }
+
     if (/^SELECT 1$/.test(t)) return resolve({ rows: [{ '?column?': 1 }] });
 
     return reject(new Error('Query non riconosciuta dal finto database: ' + t.slice(0, 80)));
