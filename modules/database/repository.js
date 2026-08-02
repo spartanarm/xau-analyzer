@@ -179,7 +179,50 @@ async function getPositionStats(symbol) {
   };
 }
 
+async function insertBlockedDecision(b) {
+  await db.query(
+    'INSERT INTO blocked_decisions (symbol, setup_id, direction, blocked_at, blocked_by, block_reason, ' +
+    'entry, sl, tp1, grade, confidence, execution_mode) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ' +
+    'ON CONFLICT (symbol, setup_id) DO NOTHING',
+    [b.symbol, b.setupId, b.direction, new Date(b.blockedAt), b.blockedBy, b.blockReason,
+     b.entry, b.sl, b.tp1, b.grade, b.confidence, b.executionMode]
+  );
+}
+
+async function resolveBlockedDecision(r) {
+  await db.query(
+    'UPDATE blocked_decisions SET resolved_at=$1, outcome=$2, exit_price=$3, hypothetical_r=$4 ' +
+    'WHERE symbol=$5 AND setup_id=$6 AND outcome IS NULL',
+    [new Date(r.resolvedAt), r.outcome, r.exitPrice, r.hypotheticalR, r.symbol, r.setupId]
+  );
+}
+
+// Statistiche per filtro: la domanda centrale di tutto il modulo —
+// "questo filtro mi ha protetto o mi ha tolto occasioni?"
+async function getFilterStats(symbol) {
+  var res = await db.query(
+    'SELECT blocked_by, outcome, COUNT(*) AS n, ' +
+    '  AVG(hypothetical_r) AS avg_r, SUM(hypothetical_r) AS sum_r ' +
+    'FROM blocked_decisions WHERE symbol=$1 GROUP BY blocked_by, outcome',
+    [symbol]
+  );
+  return res.rows;
+}
+
+async function getRecentBlocked(symbol, limit) {
+  var res = await db.query(
+    'SELECT setup_id, direction, blocked_at, blocked_by, block_reason, grade, confidence, outcome, hypothetical_r ' +
+    'FROM blocked_decisions WHERE symbol=$1 ORDER BY blocked_at DESC LIMIT $2',
+    [symbol, limit]
+  );
+  return res.rows;
+}
+
 module.exports = {
+  insertBlockedDecision: insertBlockedDecision,
+  resolveBlockedDecision: resolveBlockedDecision,
+  getFilterStats: getFilterStats,
+  getRecentBlocked: getRecentBlocked,
   recordSetupLifecycleEvent: recordSetupLifecycleEvent,
   insertAnalysis: insertAnalysis,
   insertLog: insertLog,
