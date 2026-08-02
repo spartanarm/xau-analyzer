@@ -173,6 +173,46 @@ function cmdRisk(ctx, symbol) {
   return lines.join('\n');
 }
 
+async function cmdFilters(ctx, symbol) {
+  if (!ctx.config.get().database.enabled) return '🔍 Misurazione non disponibile: il database non è collegato.';
+
+  var rows = await ctx.repo.getFilterStats(symbol);
+  if (!rows.length) return '🔍 Nessun setup è stato ancora bloccato dai filtri.\nQuando accadrà, qui vedrai se il blocco ti ha protetto o ti ha tolto un\'occasione.';
+
+  // Raggruppo per filtro: quante volte ha bloccato, e con quale esito
+  var perFiltro = {};
+  rows.forEach(function (r) {
+    var f = r.blocked_by;
+    perFiltro[f] = perFiltro[f] || { totale: 0, tp: 0, sl: 0, scaduti: 0, inAttesa: 0, sommaR: 0 };
+    var n = parseInt(r.n, 10);
+    perFiltro[f].totale += n;
+    if (r.outcome === 'WOULD_HIT_TP') { perFiltro[f].tp += n; perFiltro[f].sommaR += parseFloat(r.sum_r || 0); }
+    else if (r.outcome === 'WOULD_HIT_SL') { perFiltro[f].sl += n; perFiltro[f].sommaR += parseFloat(r.sum_r || 0); }
+    else if (r.outcome === 'EXPIRED') perFiltro[f].scaduti += n;
+    else perFiltro[f].inAttesa += n;
+  });
+
+  var lines = ['🔍 <b>Efficacia dei filtri</b>'];
+  Object.keys(perFiltro).forEach(function (f) {
+    var s = perFiltro[f];
+    var risolti = s.tp + s.sl;
+    lines.push('');
+    lines.push('<b>' + (f === 'news' ? 'News Lock' : f === 'risk' ? 'Risk Engine' : f) + '</b>');
+    lines.push('Setup bloccati: ' + s.totale);
+    if (risolti > 0) {
+      lines.push('Sarebbero andati: ' + s.tp + ' in TP · ' + s.sl + ' in SL');
+      lines.push('Risultato evitato: ' + (s.sommaR >= 0 ? '+' : '') + fmt(s.sommaR) + 'R');
+      lines.push(s.sommaR < 0
+        ? '✅ Il filtro ti ha PROTETTO (' + fmt(Math.abs(s.sommaR)) + 'R di perdite evitate)'
+        : '⚠️ Il filtro ti ha COSTATO ' + fmt(s.sommaR) + 'R di occasioni');
+    }
+    if (s.scaduti) lines.push('Scaduti senza esito: ' + s.scaduti);
+    if (s.inAttesa) lines.push('In attesa di esito: ' + s.inAttesa);
+    if (risolti < 10) lines.push('⚠️ Campione ancora piccolo (' + risolti + '): non trarre conclusioni.');
+  });
+  return lines.join('\n');
+}
+
 function cmdHelp() {
   return '🤖 <b>Comandi disponibili</b>\n' +
     '/status — stato del servizio\n' +
@@ -182,11 +222,12 @@ function cmdHelp() {
     '/history — ultimi trade conclusi\n' +
     '/stats — statistiche di trading\n' +
     '/risk — gestione del rischio e lotti\n' +
+    '/filters — efficacia dei filtri (news, rischio)\n' +
     '/news — stato modulo news\n' +
     '/help — questo elenco';
 }
 
 module.exports = {
   cmdStatus: cmdStatus, cmdMarket: cmdMarket, cmdSetup: cmdSetup, cmdOpen: cmdOpen,
-  cmdHistory: cmdHistory, cmdStats: cmdStats, cmdNews: cmdNews, cmdRisk: cmdRisk, cmdHelp: cmdHelp
+  cmdHistory: cmdHistory, cmdStats: cmdStats, cmdNews: cmdNews, cmdRisk: cmdRisk, cmdFilters: cmdFilters, cmdHelp: cmdHelp
 };
